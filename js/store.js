@@ -246,8 +246,6 @@ const Store = (() => {
       }
       try {
         sb = window.supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey);
-        const { error } = await sb.from("categories").select("id").limit(1);
-        if (error) connError = error.message;
       } catch (e) {
         connError = e.message || String(e);
       }

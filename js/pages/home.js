@@ -323,14 +323,10 @@
     bindOnce();
     const p = page();
     p.querySelector("#entry-date").value = todayStr();
-    try {
-      state.categories = await Store.getCategories(false);
-      state.items = await Store.getItems(false);
-      state.subitems = await Store.getSubitems(false);
-    } catch (e) {
-      App.fail(e, "分类加载失败");
-      state.categories = []; state.items = []; state.subitems = [];
-    }
+    // 复用 App.cache，不重复查询
+    state.categories = App.cache.categories.filter(c => c.is_active);
+    state.items = App.cache.items.filter(i => i.is_active);
+    state.subitems = App.cache.subitems || [];
     // 若之前选中的分类已失效，则清空
     if (state.selectedCat && !state.categories.some(c => c.id === state.selectedCat)) {
       state.selectedCat = null; state.selectedItem = null; state.selectedSub = null;
@@ -344,7 +340,7 @@
     renderCategories();
     renderItems();
     renderSubs();
-    renderOverview();
+    renderOverview(); // 不 await，与 UI 渲染并行
     p.querySelector("#entry-amount").focus();
   }
 

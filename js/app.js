@@ -35,13 +35,14 @@ const App = {
   },
 
   async refreshMeta(includeInactive = true) {
-    this.cache.categories = await Store.getCategories(includeInactive);
-    this.cache.items = await Store.getItems(includeInactive);
-    try {
-      this.cache.subitems = await Store.getSubitems(includeInactive);
-    } catch (e) {
-      this.cache.subitems = [];
-    }
+    const [cats, items, subs] = await Promise.all([
+      Store.getCategories(includeInactive),
+      Store.getItems(includeInactive),
+      Store.getSubitems(includeInactive).catch(() => []),
+    ]);
+    this.cache.categories = cats;
+    this.cache.items = items;
+    this.cache.subitems = subs;
   },
   catName(id) {
     const c = this.cache.categories.find(c => c.id === id);
