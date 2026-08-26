@@ -135,46 +135,6 @@
     return "";
   }
 
-  /** 月度页顶部预算卡：管控口径进度 + 超支清单（红：已设且超支；黄：未设但有支出） */
-  function monthBudgetCard(bs, budgets) {
-    if (!budgets.length) {
-      return `
-        <div class="card budget-card">
-          <div class="table-head">
-            <h3 class="card-title">本月预算</h3>
-            <a href="#/budget" class="link-btn">去设置 →</a>
-          </div>
-          <div class="empty" style="padding:10px;font-size:13px">尚未设置预算，设置后这里显示剩余金额和超支提醒</div>
-        </div>`;
-    }
-    if (!bs.totalBudget) {
-      return `
-        <div class="card budget-card">
-          <div class="table-head">
-            <h3 class="card-title">本月预算</h3>
-            <a href="#/budget" class="link-btn">去设置 →</a>
-          </div>
-          <div class="empty" style="padding:10px;font-size:13px">本月还没有设预算（该年其他月份已设）</div>
-        </div>`;
-    }
-    const over = bs.managedSpent > bs.totalBudget;
-    const remain = bs.totalBudget - bs.managedSpent;
-    const pct = bs.totalBudget > 0 ? Math.min(100, bs.managedSpent / bs.totalBudget * 100) : 0;
-    return `
-      <div class="card budget-card">
-        <div class="table-head">
-          <h3 class="card-title">本月预算</h3>
-          <a href="#/budget" class="link-btn">调整 →</a>
-        </div>
-        <div class="budget-line">
-          <span class="budget-amount">${fmtYuan(bs.totalBudget)}</span>
-          <span class="muted">已花 <b class="${over ? "text-up" : ""}">${fmtYuan(bs.managedSpent)}</b>${bs.unsetTotal ? ` · 未设大类另花 ${fmtYuan(bs.unsetTotal)}` : ""}</span>
-          <span class="${over ? "text-up" : "budget-remain"}">${over ? "超 " + fmtYuan(-remain) : "剩 " + fmtYuan(remain)}</span>
-        </div>
-        <div class="budget-track"><i class="${over ? "over" : ""}" style="width:${pct.toFixed(1)}%"></i></div>
-      </div>`;
-  }
-
   async function render() {
     bindOnce();
     const p = page();
@@ -210,31 +170,38 @@
       const prev = sumRecords(prevRecords);
       const bs = Budget.monthStatus(budgets, month, monthRecords);
 
-      // ---- 汇总卡片 ----
-      let momHTML = "";
+      // ---- 汇总卡片 + 预算合并 ----
+      let momLine = "";
       if (prev.count > 0) {
         const diff = cur.total - prev.total;
         const pct = prev.total > 0 ? (diff / prev.total) * 100 : null;
-        momHTML = `
-          <div class="ov-card">
-            <div class="ov-label">相比 ${prevMonth}月</div>
-            <div class="ov-amount ${diff >= 0 ? "text-up" : "text-down"}">${fmtYuanSigned(diff)}</div>
-            <div class="ov-sub">${prev.total > 0 ? fmtPct(pct) + "（上月 " + fmtYuan(prev.total) + "）" : "上月无消费"}</div>
-          </div>`;
+        momLine = `<div class="sum-row"><span class="${diff >= 0 ? "text-up" : "text-down"}">相比${prevMonth}月 ${fmtYuanSigned(diff)}${pct != null ? "（" + fmtPct(pct) + "）" : ""}</span></div>`;
       } else {
-        momHTML = `<div class="ov-card"><div class="ov-label">相比 ${prevMonth}月</div><div class="ov-amount">—</div><div class="ov-sub">上月暂无数据</div></div>`;
+        momLine = `<div class="sum-row muted">相比${prevMonth}月 暂无数据</div>`;
       }
 
+      const hasBudget = bs.totalBudget > 0;
+      const over = hasBudget && bs.managedSpent > bs.totalBudget;
+      const remain = hasBudget ? bs.totalBudget - bs.managedSpent : 0;
+      const pctBar = hasBudget ? Math.min(100, bs.managedSpent / bs.totalBudget * 100) : 0;
+
       p.querySelector("#mon-summary").innerHTML = `
-        <div class="ov-grid ov-grid-3">
-          <div class="card ov-card">
-            <div class="ov-label">${year}年${month}月 总支出</div>
-            <div class="ov-amount">${fmtYuan(cur.total)}</div>
-            <div class="ov-sub">共 ${cur.count} 笔</div>
+        <div class="card summary-card">
+          <div class="sum-head">
+            <span class="sum-title">${year}年${month}月</span>
+            <a href="#/budget" class="link-btn">调整 →</a>
           </div>
-          ${momHTML}
-        </div>
-        ${monthBudgetCard(bs, budgets)}`;
+          <div class="sum-main">${fmtYuan(cur.total)}</div>
+          <div class="sum-row">共 ${cur.count} 笔</div>
+          ${momLine}
+          ${hasBudget ? `
+            <div class="budget-track"><i class="${over ? "over" : ""}" style="width:${pctBar.toFixed(1)}%"></i></div>
+            <div class="sum-row">
+              月预算 ${fmtYuan(bs.totalBudget)} · 已花 <b class="${over ? "text-up" : ""}">${fmtYuan(bs.managedSpent)}</b>
+              · ${over ? "超 " + fmtYuan(-remain) : "剩 " + fmtYuan(remain)}
+            </div>
+          ` : `<div class="sum-row muted"><a href="#/budget" class="link-btn">去设置预算 →</a></div>`}
+        </div>`;
 
       // ---- 大类统计（可展开到项目；行尾预算角标）----
       const byCat = groupSum(monthRecords, r => r.category_id);

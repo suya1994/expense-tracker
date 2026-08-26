@@ -141,56 +141,6 @@
     return "";
   }
 
-  /** 年度预算卡：时序口径——进度条上画「应消耗线」（已过月份 ÷ 12），过了线才算超 */
-  function yearBudgetCard(budgets, records, year) {
-    if (!budgets.length) {
-      return `
-        <div class="card budget-card">
-          <div class="table-head">
-            <h3 class="card-title">年度预算</h3>
-            <a href="#/budget" class="link-btn">去设置 →</a>
-          </div>
-          <div class="empty" style="padding:10px;font-size:13px">尚未设置预算，设置后这里显示年度执行进度和超支提醒</div>
-        </div>`;
-    }
-    const ys = Budget.yearStatus(budgets, records, year);
-    const isNow = year === new Date().getFullYear();
-    const over = ys.managedSpent > ys.expected;
-    const diff = ys.managedSpent - ys.expected;
-    const barPct = ys.totalBudget > 0 ? Math.min(100, ys.managedSpent / ys.totalBudget * 100) : 0;
-    const markPct = Math.min(100, ys.passed / 12 * 100); // 应消耗线位置（历史年 = 100% 右端）
-
-    let statusHTML;
-    if (over) {
-      let pred = "";
-      if (isNow && ys.passed > 0) {
-        const projected = Math.round(ys.managedSpent / ys.passed * 12);
-        pred = `；按此节奏年底将达 ${fmtYuan(projected)}${projected > ys.totalBudget ? `（超预算 ${fmtYuan(projected - ys.totalBudget)}）` : "（预算内）"}`;
-      }
-      statusHTML = `<span class="text-up">超时序 ${fmtYuan(diff)}</span>（应消耗 ${fmtYuan(ys.expected)}）${pred}`;
-    } else {
-      statusHTML = `<span class="budget-remain">快于节奏 ${fmtYuan(-diff)}</span>（应消耗 ${fmtYuan(ys.expected)}）`;
-    }
-
-    return `
-      <div class="card budget-card">
-        <div class="table-head">
-          <h3 class="card-title">年度预算</h3>
-          <a href="#/budget" class="link-btn">调整 →</a>
-        </div>
-        <div class="budget-line">
-          <span class="budget-amount">${fmtYuan(ys.totalBudget)}</span>
-          <span class="muted">已设 ${ys.monthsSet}/12 月 · 已花 <b class="${over ? "text-up" : ""}">${fmtYuan(ys.managedSpent)}</b>${ys.unsetTotal ? ` · 未设大类另花 ${fmtYuan(ys.unsetTotal)}` : ""}</span>
-          ${ys.managedSpent > ys.totalBudget ? `<span class="text-up">已超全年 ${fmtYuan(ys.managedSpent - ys.totalBudget)}</span>` : ""}
-        </div>
-        <div class="budget-track">
-          <i class="${over ? "over" : ""}" style="width:${barPct.toFixed(1)}%"></i>
-          ${isNow ? `<em class="budget-mark" style="left:${markPct.toFixed(1)}%" title="应消耗线（${ys.passed}/12）"></em>` : ""}
-        </div>
-        <div class="muted" style="margin-top:6px;font-size:13px">${statusHTML}${isNow ? " · 竖线 = 应消耗线" : ""}</div>
-      </div>`;
-  }
-
   async function render() {
     bindOnce();
     const p = page();
@@ -228,33 +178,62 @@
       const monthlyAvg = recMonths > 0 ? Math.round(cur.total / recMonths) : 0;
       const passed = year === nowY ? nowM : 12;
 
-      // ---- 汇总 ----
-      let yoyHTML = "";
+      // ---- 汇总 + 预算合并 ----
+      const hasBudget = budgets.length > 0;
+      const ys = hasBudget ? Budget.yearStatus(budgets, records, year) : null;
+      const isNow = year === nowY;
+      const over = ys && ys.managedSpent > ys.expected;
+      const diff = ys ? ys.managedSpent - ys.expected : 0;
+      const barPct = ys && ys.totalBudget > 0 ? Math.min(100, ys.managedSpent / ys.totalBudget * 100) : 0;
+      const markPct = Math.min(100, (ys ? ys.passed : 12) / 12 * 100);
+
+      let yoyLine = "";
       if (prev.count > 0) {
-        const diff = cur.total - prev.total;
-        const pct = prev.total > 0 ? (diff / prev.total) * 100 : null;
-        yoyHTML = `
-          <div class="card ov-card">
-            <div class="ov-label">同比 ${year - 1}年</div>
-            <div class="ov-amount ${diff >= 0 ? "text-up" : "text-down"}">${fmtYuanSigned(diff)}</div>
-            <div class="ov-sub">${prev.total > 0 ? fmtPct(pct) + "（去年 " + fmtYuan(prev.total) + "）" : ""}</div>
-          </div>`;
+        const yoyDiff = cur.total - prev.total;
+        const yoyPct = prev.total > 0 ? (yoyDiff / prev.total) * 100 : null;
+        yoyLine = `<div class="sum-row"><span class="${yoyDiff >= 0 ? "text-up" : "text-down"}">同比${year - 1}年 ${fmtYuanSigned(yoyDiff)}${yoyPct != null ? "（" + fmtPct(yoyPct) + "）" : ""}</span></div>`;
+      } else {
+        yoyLine = `<div class="sum-row muted">同比${year - 1}年 暂无数据</div>`;
       }
+
+      let budgetLine = "";
+      if (ys && ys.totalBudget > 0) {
+        let statusLine = "";
+        if (over) {
+          let pred = "";
+          if (isNow && ys.passed > 0) {
+            const projected = Math.round(ys.managedSpent / ys.passed * 12);
+            pred = ` · 按此节奏年底 ${fmtYuan(projected)}${projected > ys.totalBudget ? "（超预算）" : ""}`;
+          }
+          statusLine = `超时序 ${fmtYuan(diff)}（应消耗 ${fmtYuan(ys.expected)}）${pred}`;
+        } else {
+          statusLine = `快于节奏 ${fmtYuan(-diff)}（应消耗 ${fmtYuan(ys.expected)}）`;
+        }
+        budgetLine = `
+          <div class="budget-track">
+            <i class="${over ? "over" : ""}" style="width:${barPct.toFixed(1)}%"></i>
+            ${isNow ? `<em class="budget-mark" style="left:${markPct.toFixed(1)}%" title="应消耗线（${ys.passed}/12）"></em>` : ""}
+          </div>
+          <div class="sum-row">
+            年预算 ${fmtYuan(ys.totalBudget)} · 已花 <b class="${over ? "text-up" : ""}">${fmtYuan(ys.managedSpent)}</b>
+            ${ys.unsetTotal ? ` · 未设另花 ${fmtYuan(ys.unsetTotal)}` : ""}
+          </div>
+          <div class="sum-row muted" style="font-size:13px">${statusLine}${isNow ? " · 竖线 = 应消耗线" : ""}</div>`;
+      } else if (hasBudget) {
+        budgetLine = `<div class="sum-row muted"><a href="#/budget" class="link-btn">去设置预算 →</a></div>`;
+      }
+
       p.querySelector("#yr-summary").innerHTML = `
-        <div class="ov-grid ov-grid-3">
-          <div class="card ov-card">
-            <div class="ov-label">${year}年 总支出</div>
-            <div class="ov-amount">${fmtYuan(cur.total)}</div>
-            <div class="ov-sub">共 ${cur.count} 笔</div>
+        <div class="card summary-card">
+          <div class="sum-head">
+            <span class="sum-title">${year}年</span>
+            <a href="#/budget" class="link-btn">调整 →</a>
           </div>
-          <div class="card ov-card">
-            <div class="ov-label">月均消费</div>
-            <div class="ov-amount">${recMonths > 0 ? fmtYuan(monthlyAvg) : "—"}</div>
-            <div class="ov-sub">${recMonths > 0 ? `按实际 ${recMonths} 个月平均` : "该年还没有记录"}</div>
-          </div>
-          ${yoyHTML || `<div class="card ov-card"><div class="ov-label">同比</div><div class="ov-amount">—</div><div class="ov-sub">${year - 1}年暂无数据</div></div>`}
-        </div>
-        ${yearBudgetCard(budgets, records, year)}`;
+          <div class="sum-main">${fmtYuan(cur.total)}</div>
+          <div class="sum-row">共 ${cur.count} 笔 · 月均 ${recMonths > 0 ? fmtYuan(monthlyAvg) : "—"}</div>
+          ${yoyLine}
+          ${budgetLine}
+        </div>`;
 
       // ---- 年度对比（近 6 年）----
       const yearlyTotals = allRecords.map(sumRecords).map(s => s.total);

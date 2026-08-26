@@ -177,6 +177,14 @@ body {
 .ov-card .ov-label { color: var(--muted); font-size: 13px; }
 .ov-amount { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .ov-sub { color: var(--muted); font-size: 13px; }
+
+/* ---------------- 汇总卡片（月度/年度合并） ---------------- */
+.summary-card { padding: 16px; }
+.sum-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.sum-title { font-size: 15px; font-weight: 600; }
+.sum-main { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; margin-bottom: 4px; }
+.sum-row { font-size: 14px; color: var(--muted); margin-bottom: 2px; }
+.sum-row:last-child { margin-bottom: 0; }
 .text-up { color: var(--danger); }   /* 支出增加：红 */
 .text-down { color: var(--accent); } /* 支出减少：绿 */
 
