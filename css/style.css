@@ -398,7 +398,7 @@ body {
 .tmpl-row { display: grid; grid-template-columns: 70px 1fr 100px; gap: 8px; align-items: center; margin-bottom: 8px; }
 .tmpl-row label { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tmpl-hint {
-  display: flex; gap: 8px; font-size: 11px; color: var(--muted); overflow: hidden; white-space: nowrap;
+  display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--muted); overflow: hidden; white-space: nowrap;
 }
 .tmpl-hint b { color: var(--text); font-weight: 600; }
 .tmpl-row input {
