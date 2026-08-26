@@ -1,7 +1,8 @@
 // ============================================================
-// 存储层：统一 API，两种实现
+// 存储层：统一 API，两种实现 + 缓存同步
 //   1. Supabase 适配器（配置了 CONFIG 时启用）
 //   2. 本地 localStorage 适配器（未配置时，方便试用）
+//   3. 缓存层：所有读写优先 localStorage，后台同步 Supabase
 // 所有金额均为整数「分」，避免浮点误差。
 // ============================================================
 const Store = (() => {
@@ -9,9 +10,12 @@ const Store = (() => {
   let mode = "local";
   let sb = null;
   let connError = null;
+  let _syncing = false;
 
-  // ---------------- 本地适配器 ----------------
+  // ---------------- 本地适配器（保持原样）----------------
   const LS_KEYS = { cat: "et.categories", item: "et.category_items", sub: "et.subitems", exp: "et.expenses", bud: "et.budgets" };
+  const LS_PENDING = "et.pending_ops";
+  const LS_SYNCED = "et.last_synced";
 
   function lsRead(key) {
     try { return JSON.parse(localStorage.getItem(key) || "[]"); } catch { return []; }
@@ -25,6 +29,15 @@ const Store = (() => {
       });
   }
   function nextSort(arr) { return arr.reduce((m, x) => Math.max(m, x.sort_order || 0), 0) + 1; }
+
+  function getPending() { return lsRead(LS_PENDING); }
+  function savePending(ops) { lsWrite(LS_PENDING, ops); }
+  function addPending(op) {
+    const ops = getPending();
+    ops.push(op);
+    savePending(ops);
+  }
+  function todayKey() { return new Date().toISOString().slice(0, 10); }
 
   const local = {
     async getCategories(includeInactive) {
@@ -199,16 +212,14 @@ const Store = (() => {
           const same = items.find(i => i.category_id === targetCatId && i.name === name);
           r.category_id = targetCatId;
           r.item_id = (same || other).id;
-          r.subitem_id = null; // 跨大类转移后原小项归属失效
+          r.subitem_id = null;
           r.updated_at = new Date().toISOString();
         }
       }
       lsWrite(LS_KEYS.item, items.filter(i => i.category_id !== catId));
       lsWrite(LS_KEYS.cat, cats.filter(c => c.id !== catId));
       lsWrite(LS_KEYS.exp, exps);
-      // 大类删除 → 该大类的预算跟着删（不转移）
       lsWrite(LS_KEYS.bud, lsRead(LS_KEYS.bud).filter(b => b.category_id !== catId));
-      // 同步删除该大类下所有项目的小项定义
       const catItemIds = new Set(items.filter(i => i.category_id === catId).map(i => i.id));
       if (catItemIds.size) lsWrite(LS_KEYS.sub, lsRead(LS_KEYS.sub).filter(s => !catItemIds.has(s.item_id)));
       return { moved: affected.length };
@@ -228,7 +239,6 @@ const Store = (() => {
       if (affected.length) {
         let target = targetItemId ? items.find(i => i.id === targetItemId) : null;
         if (!target) {
-          // 优先复用同大类已有的「其他」，没有才新建
           target = items.find(i => i.category_id === item.category_id && i.name === "其他");
         }
         if (!target) {
@@ -237,18 +247,18 @@ const Store = (() => {
         }
         for (const r of affected) {
           r.item_id = target.id;
-          r.subitem_id = null; // 转移到其他项目后原小项归属失效
+          r.subitem_id = null;
           r.updated_at = new Date().toISOString();
         }
       }
       lsWrite(LS_KEYS.exp, exps);
       lsWrite(LS_KEYS.item, items.filter(i => i.id !== itemId));
-      lsWrite(LS_KEYS.sub, lsRead(LS_KEYS.sub).filter(s => s.item_id !== itemId)); // 删除该项目的小项定义
+      lsWrite(LS_KEYS.sub, lsRead(LS_KEYS.sub).filter(s => s.item_id !== itemId));
       return { moved: affected.length };
     },
   };
 
-  // ---------------- Supabase 适配器 ----------------
+  // ---------------- Supabase 适配器（保持原样）----------------
   const supabaseAdapter = {
     async getCategories(includeInactive) {
       let q = sb.from("categories").select("*").order("sort_order").order("name");
@@ -285,10 +295,6 @@ const Store = (() => {
       return data;
     },
     // ---------------- 小项（第三级，挂在项目下）----------------
-    // 需先建表：CREATE TABLE sub_items (id uuid primary key default gen_random_uuid(),
-    //   item_id uuid references category_items(id), name text, sort_order int default 0,
-    //   is_active boolean default true, created_at timestamptz default now());
-    //   ALTER TABLE expenses ADD COLUMN subitem_id uuid references sub_items(id);
     async getSubitems(includeInactive) {
       let q = sb.from("sub_items").select("*").order("sort_order").order("name");
       if (!includeInactive) q = q.eq("is_active", true);
@@ -352,7 +358,6 @@ const Store = (() => {
       return (data || []).length;
     },
     // ---------------- 预算（大类 × 年 × 月）----------------
-    // 需先建表（db/schema.sql）：budgets + unique(category_id, year, month) + RLS 放行
     async getBudgets(year) {
       const { data, error } = await sb.from("budgets").select("*").eq("year", year);
       if (error) throw error;
@@ -416,7 +421,6 @@ const Store = (() => {
         const { error: e4 } = await sb.from("expenses").upsert(updates);
         if (e4) throw e4;
       }
-      // 删除该大类所有项目的小项定义
       const delItemIds = allItems.filter(i => i.category_id === catId).map(i => i.id);
       if (delItemIds.length) {
         const { error: e7 } = await sb.from("sub_items").delete().in("item_id", delItemIds);
@@ -443,7 +447,6 @@ const Store = (() => {
           target = t;
         }
         if (!target) {
-          // 优先复用同大类已有的「其他」
           const { data: existing } = await sb.from("category_items").select("id").eq("category_id", item.category_id).eq("name", "其他").limit(1);
           if (existing && existing.length) target = existing[0];
         }
@@ -464,11 +467,85 @@ const Store = (() => {
     },
   };
 
-  // ---------------- 对外 API ----------------
+  // ================================================================
+  //  缓存同步层：本地优先 + pending_ops + 后台同步
+  // ================================================================
+
+  /** 将本地待同步操作推送到 Supabase */
+  async function flushPending() {
+    const ops = getPending();
+    if (!ops.length) return;
+    const failed = [];
+    for (const op of ops) {
+      try {
+        switch (op.op) {
+          case "addExpense": await supabaseAdapter.addExpense(op.data); break;
+          case "updateExpense": await supabaseAdapter.updateExpense(op.id, op.patch); break;
+          case "deleteExpense": await supabaseAdapter.deleteExpense(op.id); break;
+          case "deleteExpensesByRange": await supabaseAdapter.deleteExpensesByRange(op.from, op.to); break;
+          case "bulkAddExpenses": await supabaseAdapter.bulkAddExpenses(op.rows); break;
+          case "setBudget": await supabaseAdapter.setBudget(op.catId, op.year, op.month, op.amountCents); break;
+          case "deleteBudget": await supabaseAdapter.deleteBudget(op.catId, op.year, op.month); break;
+          case "addCategory": await supabaseAdapter.addCategory(op.name); break;
+          case "updateCategory": await supabaseAdapter.updateCategory(op.id, op.patch); break;
+          case "addItem": await supabaseAdapter.addItem(op.categoryId, op.name); break;
+          case "updateItem": await supabaseAdapter.updateItem(op.id, op.patch); break;
+          case "addSubitem": await supabaseAdapter.addSubitem(op.itemId, op.name); break;
+          case "updateSubitem": await supabaseAdapter.updateSubitem(op.id, op.patch); break;
+          case "deleteSubitem": await supabaseAdapter.deleteSubitem(op.id); break;
+          case "deleteCategoryWithTransfer": await supabaseAdapter.deleteCategoryWithTransfer(op.catId, op.targetCatId); break;
+          case "deleteItemWithTransfer": await supabaseAdapter.deleteItemWithTransfer(op.itemId, op.targetItemId); break;
+        }
+      } catch (e) {
+        console.warn("[sync] pending op failed:", op.op, e.message);
+        failed.push(op);
+      }
+    }
+    savePending(failed);
+  }
+
+  /** 从 Supabase 全量拉取，替换本地缓存 */
+  async function pullRemoteToCache() {
+    const [cats, items, subs, exps, allBud] = await Promise.all([
+      supabaseAdapter.getCategories(true),
+      supabaseAdapter.getItems(true),
+      supabaseAdapter.getSubitems(true),
+      supabaseAdapter.getExpenses({}),
+      (async () => {
+        const currentYear = new Date().getFullYear();
+        const lastYear = currentYear - 1;
+        const [cy, ly] = await Promise.all([
+          supabaseAdapter.getBudgets(currentYear),
+          supabaseAdapter.getBudgets(lastYear),
+        ]);
+        return [...cy, ...ly];
+      })(),
+    ]);
+    lsWrite(LS_KEYS.cat, cats);
+    lsWrite(LS_KEYS.item, items);
+    lsWrite(LS_KEYS.sub, subs);
+    lsWrite(LS_KEYS.exp, exps);
+    lsWrite(LS_KEYS.bud, allBud);
+    localStorage.setItem(LS_SYNCED, todayKey());
+  }
+
+  /** 重试所有失败的 pending ops */
+  async function retryPending() {
+    const ops = getPending();
+    if (!ops.length) return;
+    await flushPending();
+  }
+
+  // ================================================================
+  //  对外 API：所有读走本地缓存，所有写先本地后远程
+  // ================================================================
   return {
     get mode() { return mode; },
     get connError() { return connError; },
+    get pendingCount() { return getPending().length; },
+
     async init() {
+      // 1. 检测 Supabase 连接
       if (window.supabase && typeof CONFIG === "object" &&
           CONFIG.supabaseUrl && CONFIG.supabaseKey &&
           !String(CONFIG.supabaseUrl).includes("YOUR_")) {
@@ -482,29 +559,146 @@ const Store = (() => {
           mode = "local";
         }
       }
+
+      // 2. 检查本地是否有缓存
+      const hasCache = lsRead(LS_KEYS.cat).length > 0 || lsRead(LS_KEYS.exp).length > 0;
+
+      if (mode === "supabase") {
+        if (!hasCache) {
+          // 首次使用：从 Supabase 加载完整数据
+          try {
+            await pullRemoteToCache();
+          } catch (e) {
+            console.warn("[sync] 首次拉取失败:", e.message);
+          }
+        } else {
+          // 有缓存：先渲染，后台同步
+          const lastSynced = localStorage.getItem(LS_SYNCED);
+          const syncedToday = lastSynced === todayKey();
+
+          // 后台执行（不阻塞 init 返回）
+          (async () => {
+            try {
+              _syncing = true;
+              await flushPending();
+              if (!syncedToday && getPending().length === 0) {
+                await pullRemoteToCache();
+              }
+            } catch (e) {
+              console.warn("[sync] 后台同步失败:", e.message);
+            } finally {
+              _syncing = false;
+            }
+          })();
+        }
+      }
+
       return mode;
     },
-    // 统一入口
-    async getCategories(includeInactive) { return (mode === "supabase" ? supabaseAdapter : local).getCategories(includeInactive); },
-    async getItems(includeInactive) { return (mode === "supabase" ? supabaseAdapter : local).getItems(includeInactive); },
-    async addCategory(name) { return (mode === "supabase" ? supabaseAdapter : local).addCategory(name); },
-    async updateCategory(id, patch) { return (mode === "supabase" ? supabaseAdapter : local).updateCategory(id, patch); },
-    async addItem(categoryId, name) { return (mode === "supabase" ? supabaseAdapter : local).addItem(categoryId, name); },
-    async updateItem(id, patch) { return (mode === "supabase" ? supabaseAdapter : local).updateItem(id, patch); },
-    async getSubitems(includeInactive) { return (mode === "supabase" ? supabaseAdapter : local).getSubitems(includeInactive); },
-    async addSubitem(itemId, name) { return (mode === "supabase" ? supabaseAdapter : local).addSubitem(itemId, name); },
-    async updateSubitem(id, patch) { return (mode === "supabase" ? supabaseAdapter : local).updateSubitem(id, patch); },
-    async deleteSubitem(id) { return (mode === "supabase" ? supabaseAdapter : local).deleteSubitem(id); },
-    async getExpenses(f) { return (mode === "supabase" ? supabaseAdapter : local).getExpenses(f); },
-    async addExpense(e) { return (mode === "supabase" ? supabaseAdapter : local).addExpense(e); },
-    async updateExpense(id, patch) { return (mode === "supabase" ? supabaseAdapter : local).updateExpense(id, patch); },
-    async deleteExpense(id) { return (mode === "supabase" ? supabaseAdapter : local).deleteExpense(id); },
-    async deleteExpensesByRange(from, to) { return (mode === "supabase" ? supabaseAdapter : local).deleteExpensesByRange(from, to); },
-    async getBudgets(year) { return (mode === "supabase" ? supabaseAdapter : local).getBudgets(year); },
-    async setBudget(catId, year, month, amountCents) { return (mode === "supabase" ? supabaseAdapter : local).setBudget(catId, year, month, amountCents); },
-    async deleteBudget(catId, year, month) { return (mode === "supabase" ? supabaseAdapter : local).deleteBudget(catId, year, month); },
-    async bulkAddExpenses(rows) { return (mode === "supabase" ? supabaseAdapter : local).bulkAddExpenses(rows); },
-    async deleteCategoryWithTransfer(catId, targetCatId) { return (mode === "supabase" ? supabaseAdapter : local).deleteCategoryWithTransfer(catId, targetCatId); },
-    async deleteItemWithTransfer(itemId, targetItemId) { return (mode === "supabase" ? supabaseAdapter : local).deleteItemWithTransfer(itemId, targetItemId); },
+
+    // ---- 读取：始终走本地缓存 ----
+    async getCategories(includeInactive) { return local.getCategories(includeInactive); },
+    async getItems(includeInactive) { return local.getItems(includeInactive); },
+    async getSubitems(includeInactive) { return local.getSubitems(includeInactive); },
+    async getExpenses(f) { return local.getExpenses(f); },
+    async getBudgets(year) { return local.getBudgets(year); },
+
+    // ---- 写入：先本地 → 加 pending → 后台同步 ----
+    async addCategory(name) {
+      const row = await local.addCategory(name);
+      addPending({ op: "addCategory", name });
+      if (mode === "supabase") retryPending().catch(() => {});
+      return row;
+    },
+    async updateCategory(id, patch) {
+      const row = await local.updateCategory(id, patch);
+      addPending({ op: "updateCategory", id, patch });
+      if (mode === "supabase") retryPending().catch(() => {});
+      return row;
+    },
+    async addItem(categoryId, name) {
+      const row = await local.addItem(categoryId, name);
+      addPending({ op: "addItem", categoryId, name });
+      if (mode === "supabase") retryPending().catch(() => {});
+      return row;
+    },
+    async updateItem(id, patch) {
+      const row = await local.updateItem(id, patch);
+      addPending({ op: "updateItem", id, patch });
+      if (mode === "supabase") retryPending().catch(() => {});
+      return row;
+    },
+    async addSubitem(itemId, name) {
+      const row = await local.addSubitem(itemId, name);
+      addPending({ op: "addSubitem", itemId, name });
+      if (mode === "supabase") retryPending().catch(() => {});
+      return row;
+    },
+    async updateSubitem(id, patch) {
+      const row = await local.updateSubitem(id, patch);
+      addPending({ op: "updateSubitem", id, patch });
+      if (mode === "supabase") retryPending().catch(() => {});
+      return row;
+    },
+    async deleteSubitem(id) {
+      const result = await local.deleteSubitem(id);
+      addPending({ op: "deleteSubitem", id });
+      if (mode === "supabase") retryPending().catch(() => {});
+      return result;
+    },
+    async addExpense(e) {
+      const row = await local.addExpense(e);
+      addPending({ op: "addExpense", data: e });
+      if (mode === "supabase") retryPending().catch(() => {});
+      return row;
+    },
+    async updateExpense(id, patch) {
+      const row = await local.updateExpense(id, patch);
+      addPending({ op: "updateExpense", id, patch });
+      if (mode === "supabase") retryPending().catch(() => {});
+      return row;
+    },
+    async deleteExpense(id) {
+      const result = await local.deleteExpense(id);
+      addPending({ op: "deleteExpense", id });
+      if (mode === "supabase") retryPending().catch(() => {});
+      return result;
+    },
+    async deleteExpensesByRange(from, to) {
+      const count = await local.deleteExpensesByRange(from, to);
+      addPending({ op: "deleteExpensesByRange", from, to });
+      if (mode === "supabase") retryPending().catch(() => {});
+      return count;
+    },
+    async setBudget(catId, year, month, amountCents) {
+      await local.setBudget(catId, year, month, amountCents);
+      addPending({ op: "setBudget", catId, year, month, amountCents });
+      if (mode === "supabase") retryPending().catch(() => {});
+      return true;
+    },
+    async deleteBudget(catId, year, month) {
+      await local.deleteBudget(catId, year, month);
+      addPending({ op: "deleteBudget", catId, year, month });
+      if (mode === "supabase") retryPending().catch(() => {});
+      return true;
+    },
+    async bulkAddExpenses(rows) {
+      const count = await local.bulkAddExpenses(rows);
+      addPending({ op: "bulkAddExpenses", rows });
+      if (mode === "supabase") retryPending().catch(() => {});
+      return count;
+    },
+    async deleteCategoryWithTransfer(catId, targetCatId) {
+      const result = await local.deleteCategoryWithTransfer(catId, targetCatId);
+      addPending({ op: "deleteCategoryWithTransfer", catId, targetCatId });
+      if (mode === "supabase") retryPending().catch(() => {});
+      return result;
+    },
+    async deleteItemWithTransfer(itemId, targetItemId) {
+      const result = await local.deleteItemWithTransfer(itemId, targetItemId);
+      addPending({ op: "deleteItemWithTransfer", itemId, targetItemId });
+      if (mode === "supabase") retryPending().catch(() => {});
+      return result;
+    },
   };
 })();

@@ -7,6 +7,7 @@ const App = {
   _toastTimer: null,
 
   async init() {
+    // init 内部已处理：检测 Supabase → 无缓存则全量拉取 → 有缓存则后台同步
     const mode = await Store.init();
 
     // 模式徽标 + 连接错误提示
@@ -23,13 +24,20 @@ const App = {
       this.toast("Supabase 连接失败：" + Store.connError + "（已临时使用本地模式，数据仅存浏览器）", "error", 6000);
     }
 
-    // 初始分类缓存
+    // 从本地缓存加载分类（秒级响应，不等网络）
     await this.refreshMeta();
 
     // 路由
     window.addEventListener("hashchange", () => this.route());
     if (!location.hash) location.hash = "#/home";
     this.route();
+
+    // 网络恢复时自动重试未同步操作
+    window.addEventListener("online", () => {
+      if (Store.pendingCount > 0) {
+        this.toast("网络已恢复，正在同步...", "success", 2000);
+      }
+    });
   },
 
   /** 刷新分类缓存（含已停用，用于历史记录名称显示） */
