@@ -160,7 +160,6 @@
     const over = bs.managedSpent > bs.totalBudget;
     const remain = bs.totalBudget - bs.managedSpent;
     const pct = bs.totalBudget > 0 ? Math.min(100, bs.managedSpent / bs.totalBudget * 100) : 0;
-    const overRows = bs.rows.filter(r => r.status === "over");
     return `
       <div class="card budget-card">
         <div class="table-head">
@@ -173,11 +172,6 @@
           <span class="${over ? "text-up" : "budget-remain"}">${over ? "超 " + fmtYuan(-remain) : "剩 " + fmtYuan(remain)}</span>
         </div>
         <div class="budget-track"><i class="${over ? "over" : ""}" style="width:${pct.toFixed(1)}%"></i></div>
-        ${overRows.length || bs.unsetRows.length ? `
-        <div class="budget-rows">
-          ${overRows.map(r => `<div class="bud-row over"><span>${escapeHtml(r.name)}</span><span>${fmtYuan(r.spent)} / ${fmtYuan(r.budget)} · 超 ${fmtYuan(r.overAmt)}</span></div>`).join("")}
-          ${bs.unsetRows.map(r => `<div class="bud-row unset"><span>${escapeHtml(r.name)}</span><span>${fmtYuan(r.spent)} · 未设预算</span></div>`).join("")}
-        </div>` : ""}
       </div>`;
   }
 

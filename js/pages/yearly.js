@@ -172,7 +172,6 @@
       statusHTML = `<span class="budget-remain">快于节奏 ${fmtYuan(-diff)}</span>（应消耗 ${fmtYuan(ys.expected)}）`;
     }
 
-    const overRows = ys.rows.filter(r => r.status === "over");
     return `
       <div class="card budget-card">
         <div class="table-head">
@@ -189,11 +188,6 @@
           ${isNow ? `<em class="budget-mark" style="left:${markPct.toFixed(1)}%" title="应消耗线（${ys.passed}/12）"></em>` : ""}
         </div>
         <div class="muted" style="margin-top:6px;font-size:13px">${statusHTML}${isNow ? " · 竖线 = 应消耗线" : ""}</div>
-        ${overRows.length || ys.unsetRows.length ? `
-        <div class="budget-rows">
-          ${overRows.map(r => `<div class="bud-row over"><span>${escapeHtml(r.name)}</span><span>${fmtYuan(r.spent)} / 应消耗 ${fmtYuan(r.expected)} · 超 ${fmtYuan(r.overAmt)}</span></div>`).join("")}
-          ${ys.unsetRows.map(r => `<div class="bud-row unset"><span>${escapeHtml(r.name)}</span><span>${fmtYuan(r.spent)} · 未设预算</span></div>`).join("")}
-        </div>` : ""}
       </div>`;
   }
 
