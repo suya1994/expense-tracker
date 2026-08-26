@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>记账本 · 记一笔</title>
+  <link rel="stylesheet" href="css/style.css?v=30">
+</head>
+<body>
+
+  <!-- ============ 顶部导航 ============ -->
+  <header class="topbar">
+    <div class="brand">📖 记账本 <span id="mode-badge" class="badge"></span></div>
+    <nav class="nav">
+      <a href="#/home" class="nav-btn active" data-page="home">首页</a>
+      <a href="#/monthly" class="nav-btn" data-page="monthly">月度</a>
+      <a href="#/yearly" class="nav-btn" data-page="yearly">年度</a>
+      <a href="#/records" class="nav-btn" data-page="records">记录</a>
+      <a href="#/cats" class="nav-btn" data-page="cats">分类</a>
+    </nav>
+  </header>
+
+  <!-- 本地模式提示 -->
+  <div id="local-mode-tip" class="banner" style="display:none">
+    当前为本地模式：数据保存在本浏览器 localStorage。要长期使用请在 <code>js/config.js</code> 中填写 Supabase 地址和 Key（云端多设备同步），并执行 <code>db/schema.sql</code>。
+  </div>
+
+  <main class="main">
+
+    <!-- ============ 首页：记一笔 ============ -->
+    <section id="page-home" class="page active">
+      <div class="card entry-card">
+        <div class="entry-head">
+          <h2 class="entry-title">记一笔</h2>
+          <button id="budget-entry-btn" class="btn btn-ghost btn-sm" title="预算设置">⚙ 预算</button>
+        </div>
+        <div class="amount-row">
+          <span class="currency">¥</span>
+          <input id="entry-amount" type="text" inputmode="decimal" placeholder="0.00"
+                 autocomplete="off" enterkeyhint="done" aria-label="金额">
+        </div>
+        <div class="field-row">
+          <label for="entry-date">日期</label>
+          <input id="entry-date" type="date">
+        </div>
+        <div class="field-block">
+          <label>大类</label>
+          <div id="entry-categories" class="chip-grid"></div>
+        </div>
+        <div class="field-block">
+          <label>项目</label>
+          <div id="entry-items" class="chip-grid"></div>
+        </div>
+        <div class="field-block" id="entry-sub-block" style="display:none">
+          <label>小项（选填）</label>
+          <div id="entry-subs" class="chip-grid"></div>
+        </div>
+        <div class="field-row">
+          <label for="entry-note">备注</label>
+          <input id="entry-note" type="text" placeholder="选填，如：XX品牌猫粮" enterkeyhint="done">
+        </div>
+        <button id="entry-save" class="btn-primary btn-save">保 存</button>
+      </div>
+
+      <div id="home-overview" class="overview"></div>
+    </section>
+
+    <!-- ============ 记录页 ============ -->
+    <section id="page-records" class="page">
+      <div class="card filter-card">
+        <div class="filter-grid">
+          <div class="filter-item filter-full"><label>年份</label>
+            <select id="rec-year"><option value="">全部年份</option></select>
+          </div>
+          <div class="filter-item filter-full"><label>起</label><input id="rec-from" type="date"></div>
+          <div class="filter-item filter-full"><label>止</label><input id="rec-to" type="date"></div>
+          <div class="filter-item"><label>大类</label>
+            <select id="rec-cat"><option value="">全部大类</option></select>
+          </div>
+          <div class="filter-item"><label>项目</label>
+            <select id="rec-item"><option value="">全部项目</option></select>
+          </div>
+          <div class="filter-item"><label>小项</label>
+            <select id="rec-sub"><option value="">全部小项</option></select>
+          </div>
+          <div class="filter-item filter-kw"><label>关键词</label>
+            <input id="rec-kw" type="text" placeholder="搜索备注">
+          </div>
+        </div>
+        <div class="filter-actions">
+          <button id="rec-apply" class="btn btn-primary btn-sm">筛选</button>
+          <button id="rec-reset" class="btn btn-ghost btn-sm">重置</button>
+          <span class="flex-1"></span>
+          <button id="rec-import" class="btn btn-ghost btn-sm">⬆ 导入 Excel</button>
+          <button id="rec-export-all" class="btn btn-ghost btn-sm">⬇ 导出全部 Excel</button>
+          <button id="rec-del-year" class="btn btn-danger btn-sm">🗑 按年删除</button>
+          <button id="rec-del-month" class="btn btn-danger btn-sm">🗑 按月删除</button>
+          <input type="file" id="rec-import-file" accept=".xlsx,.xls,.csv" style="display:none">
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="table-head">
+          <h3 class="card-title">消费记录（时间倒序）</h3>
+          <span id="rec-count" class="muted"></span>
+        </div>
+        <div id="rec-table"></div>
+        <button id="rec-more" class="btn btn-ghost btn-more" style="display:none">加载更多</button>
+      </div>
+    </section>
+
+    <!-- ============ 月度统计页 ============ -->
+    <section id="page-monthly" class="page">
+      <div class="card">
+        <div class="period-picker">
+          <button id="mon-prev" class="btn btn-ghost btn-sm">← 上月</button>
+          <select id="mon-year" class="sel-year"></select>
+          <select id="mon-month" class="sel-month"></select>
+          <button id="mon-next" class="btn btn-ghost btn-sm">下月 →</button>
+        </div>
+      </div>
+      <div id="mon-summary" class="ov-grid-wrap"></div>
+      <div id="mon-cats"></div>
+      <div id="mon-trend"></div>
+    </section>
+
+    <!-- ============ 年度统计页 ============ -->
+    <section id="page-yearly" class="page">
+      <div class="card">
+        <div class="period-picker">
+          <select id="yr-year" class="sel-year"></select>
+          <span class="muted">年度统计</span>
+          <span class="flex-1"></span>
+          <button id="yr-export" class="btn btn-ghost btn-sm">⬇ 导出本年</button>
+        </div>
+      </div>
+      <div id="yr-summary" class="ov-grid-wrap"></div>
+      <div id="yr-trend"></div>
+      <div id="yr-cats"></div>
+    </section>
+
+    <!-- ============ 预算设置页（入口：首页右上角 ⚙）============ -->
+    <section id="page-budget" class="page">
+      <div class="card">
+        <div class="period-picker">
+          <button id="bud-back" class="btn btn-ghost btn-sm">← 返回记账</button>
+          <select id="bud-year" class="sel-year"></select>
+          <span class="muted">预算设置</span>
+          <span class="flex-1"></span>
+          <span id="bud-total" class="muted"></span>
+        </div>
+        <p class="tips">月度预算 = 当月已设大类之和；年度预算 = 12 个月之和（自动汇总）。未设预算的大类不参与超支判断，删除大类时其预算一并删除。设置参考：去年支出月均按「实际有记账的月份数」平均。</p>
+      </div>
+      <div id="bud-list"></div>
+    </section>
+
+    <!-- ============ 分类管理页 ============ -->
+    <section id="page-cats" class="page">
+      <div class="cat-manage-grid">
+        <div class="card">
+          <div class="table-head">
+            <h3 class="card-title">大类</h3>
+            <button id="cat-add" class="btn btn-primary btn-sm">＋ 新增大类</button>
+          </div>
+          <div id="cat-list"></div>
+          <p class="tips">删除大类时若名下有消费记录，会先让你选择转移目标，历史数据不丢。</p>
+        </div>
+        <div class="card">
+          <div class="table-head">
+            <h3 class="card-title">具体项目</h3>
+            <button id="item-add" class="btn btn-primary btn-sm">＋ 新增项目</button>
+          </div>
+          <div id="cat-items"></div>
+          <p class="tips">「移动」可把项目换到别的大类；删除项目时若名下有记录，会先让你选择转移目标。</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Toast / 弹窗 -->
+  <div id="toast" class="toast" role="status"></div>
+  <div id="modal-root"></div>
+
+  <!-- CDN 依赖：Supabase 客户端 + SheetJS（Excel） -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <script src="js/config.js?v=30"></script>
+  <script src="js/format.js?v=30"></script>
+  <script src="js/budget.js?v=30"></script>
+  <script src="js/store.js?v=30"></script>
+  <script src="js/app.js?v=30"></script>
+  <script src="js/export.js?v=30"></script>
+  <script src="js/import.js?v=30"></script>
+  <script src="js/pages/home.js?v=30"></script>
+  <script src="js/pages/records.js?v=30"></script>
+  <script src="js/pages/monthly.js?v=30"></script>
+  <script src="js/pages/yearly.js?v=30"></script>
+  <script src="js/pages/categories.js?v=30"></script>
+  <script src="js/pages/budget.js?v=30"></script>
+</body>
+</html>
