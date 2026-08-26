@@ -151,7 +151,7 @@
   // ---------------- 概览 ----------------
   async function renderOverview() {
     const box = page().querySelector("#home-overview");
-    box.innerHTML = `<div class="card loading-card">加载中…</div>`;
+    box.innerHTML = `<div class="card loading-card"><div class="spinner"></div>加载中…</div>`;
     try {
       const today = todayStr();
       const { y, m } = ymOf(today);

@@ -147,7 +147,7 @@
     }
     const { year, month } = state;
 
-    p.querySelector("#mon-summary").innerHTML = `<div class="card loading-card">加载中…</div>`;
+    p.querySelector("#mon-summary").innerHTML = `<div class="card loading-card"><div class="spinner"></div>加载中…</div>`;
     p.querySelector("#mon-cats").innerHTML = "";
 
     try {

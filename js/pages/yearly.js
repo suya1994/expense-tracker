@@ -150,7 +150,7 @@
     }
     const year = state.year;
 
-    p.querySelector("#yr-summary").innerHTML = `<div class="card loading-card">加载中…</div>`;
+    p.querySelector("#yr-summary").innerHTML = `<div class="card loading-card"><div class="spinner"></div>加载中…</div>`;
     p.querySelector("#yr-cats").innerHTML = "";
     p.querySelector("#yr-trend").innerHTML = "";
 

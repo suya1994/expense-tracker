@@ -2,52 +2,44 @@
 // 应用骨架：路由 / 导航 / Toast / 弹窗 / 确认框
 // ============================================================
 const App = {
-  pages: {},        // { home: {title, render}, ... }
-  cache: { categories: [], items: [], subitems: [] }, // 含已停用的全量缓存（用于名称显示）
+  pages: {},
+  cache: { categories: [], items: [], subitems: [] },
   _toastTimer: null,
 
   async init() {
-    // init 内部已处理：检测 Supabase → 无缓存则全量拉取 → 有缓存则后台同步
-    const mode = await Store.init();
+    await Store.init();
 
-    // 模式徽标 + 连接错误提示
-    const badge = document.getElementById("mode-badge");
-    if (mode === "supabase") {
-      badge.textContent = "☁ 云端";
-      badge.className = "badge badge-cloud";
-    } else {
-      badge.textContent = "🔖 本地模式";
-      badge.className = "badge badge-local";
-      document.getElementById("local-mode-tip").style.display = "";
-    }
+    // 连接错误：显示错误提示并停止初始化
     if (Store.connError) {
-      this.toast("Supabase 连接失败：" + Store.connError + "（已临时使用本地模式，数据仅存浏览器）", "error", 6000);
+      document.getElementById("app-loading").innerHTML =
+        `<div class="loading-error">
+          <div class="loading-error-icon">⚠</div>
+          <div class="loading-error-msg">Supabase 连接失败</div>
+          <div class="loading-error-detail">${escapeHtml(Store.connError)}</div>
+          <div class="loading-error-hint">请检查 <code>js/config.js</code> 中的 supabaseUrl 和 supabaseKey</div>
+        </div>`;
+      return;
     }
 
-    // 从本地缓存加载分类（秒级响应，不等网络）
+    // 隐藏全局 loading
+    const overlay = document.getElementById("app-loading");
+    if (overlay) overlay.remove();
+
+    // 加载分类缓存
     await this.refreshMeta();
 
     // 路由
     window.addEventListener("hashchange", () => this.route());
     if (!location.hash) location.hash = "#/home";
     this.route();
-
-    // 网络恢复时自动重试未同步操作
-    window.addEventListener("online", () => {
-      if (Store.pendingCount > 0) {
-        this.toast("网络已恢复，正在同步...", "success", 2000);
-      }
-    });
   },
 
-  /** 刷新分类缓存（含已停用，用于历史记录名称显示） */
   async refreshMeta(includeInactive = true) {
     this.cache.categories = await Store.getCategories(includeInactive);
     this.cache.items = await Store.getItems(includeInactive);
     try {
       this.cache.subitems = await Store.getSubitems(includeInactive);
     } catch (e) {
-      // 兼容旧库（无 sub_items 表）：小项功能静默降级
       this.cache.subitems = [];
     }
   },
@@ -75,7 +67,6 @@ const App = {
     el.classList.add("active");
     document.querySelectorAll(".nav-btn").forEach(b => b.classList.toggle("active", b.dataset.page === key));
     document.title = "记账本 · " + page.title;
-    // 每次进入页面重新渲染（保证数据最新）
     Promise.resolve(page.render(el)).catch(e => {
       console.error(e);
       this.toast("加载失败：" + (e.message || e), "error");
@@ -92,7 +83,6 @@ const App = {
   },
 
   // ---------------- 弹窗 ----------------
-  /** 打开一个弹窗，返回弹窗元素；close 时自动移除 */
   openModal(title, bodyHTML, footHTML = "") {
     const root = document.getElementById("modal-root");
     const wrap = document.createElement("div");
@@ -111,7 +101,6 @@ const App = {
     return wrap;
   },
 
-  /** 确认框：返回 Promise<boolean> */
   confirm(message, { danger = false, okText = "确认", cancelText = "取消" } = {}) {
     return new Promise(resolve => {
       const wrap = this.openModal("请确认", `
@@ -123,7 +112,6 @@ const App = {
     });
   },
 
-  /** 单字段输入弹窗：返回 Promise<string|null> */
   prompt(title, label, value = "", placeholder = "") {
     return new Promise(resolve => {
       const wrap = this.openModal(title, `
@@ -142,7 +130,6 @@ const App = {
     });
   },
 
-  /** 通用错误处理 */
   fail(e, prefix = "操作失败") {
     console.error(e);
     this.toast(prefix + "：" + (e.message || e), "error", 4000);

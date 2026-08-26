@@ -83,7 +83,33 @@ body {
   text-align: center; color: var(--muted);
   padding: 28px 10px; font-size: 14px;
 }
-.loading-card { text-align: center; color: var(--muted); }
+.loading-card { text-align: center; color: var(--muted); padding: 28px 10px; }
+
+/* ---------------- Loading 动画 ---------------- */
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.spinner {
+  display: inline-block; width: 24px; height: 24px;
+  border: 3px solid var(--border); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin .7s linear infinite;
+  vertical-align: middle; margin-right: 8px;
+}
+.spinner-sm { width: 16px; height: 16px; border-width: 2px; margin-right: 4px; }
+.loading-card .spinner { margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto; }
+
+/* 全局 loading overlay（应用启动时） */
+#app-loading {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: var(--card);
+}
+#app-loading .spinner { width: 36px; height: 36px; border-width: 4px; margin-bottom: 16px; }
+#app-loading p { color: var(--muted); font-size: 14px; margin: 0; }
+.loading-error { text-align: center; padding: 40px 20px; }
+.loading-error-icon { font-size: 48px; margin-bottom: 12px; }
+.loading-error-msg { font-size: 18px; font-weight: 600; color: var(--danger); margin-bottom: 8px; }
+.loading-error-detail { font-size: 13px; color: var(--muted); margin-bottom: 16px; word-break: break-all; }
+.loading-error-hint { font-size: 13px; color: var(--muted); }
+.loading-error-hint code { background: rgba(0,0,0,.05); padding: 2px 6px; border-radius: 4px; }
 
 /* ---------------- 首页 · 记一笔 ---------------- */
 .entry-card { border: 2px solid var(--accent); }

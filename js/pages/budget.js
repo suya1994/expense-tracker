@@ -317,7 +317,7 @@
     }
     const year = state.year;
     const listEl = p.querySelector("#bud-list");
-    listEl.innerHTML = `<div class="card loading-card">加载中…</div>`;
+    listEl.innerHTML = `<div class="card loading-card"><div class="spinner"></div>加载中…</div>`;
 
     try {
       const [yFrom, yTo] = yearRange(year);

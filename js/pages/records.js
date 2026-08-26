@@ -183,7 +183,7 @@
   async function load() {
     const p = page();
     const tbodyWrap = p.querySelector("#rec-table");
-    tbodyWrap.innerHTML = `<div class="empty">加载中…</div>`;
+    tbodyWrap.innerHTML = `<div class="empty"><div class="spinner spinner-sm"></div>加载中…</div>`;
     const f = {
       from: p.querySelector("#rec-from").value || undefined,
       to: p.querySelector("#rec-to").value || undefined,
