@@ -13,7 +13,7 @@ const Store = (() => {
   let _syncing = false;
 
   // ---------------- 本地适配器（保持原样）----------------
-  const LS_KEYS = { cat: "et.categories", item: "et.category_items", sub: "et.subitems", exp: "et.expenses", bud: "et.budgets" };
+  const LS_KEYS = { cat: "et.categories", item: "et.category_items", sub: "et.subitems", exp: "et.expenses", bud: "et.budgets", budTmpl: "et.budget_tmpl" };
   const LS_PENDING = "et.pending_ops";
   const LS_SYNCED = "et.last_synced";
 
@@ -162,6 +162,18 @@ const Store = (() => {
       const kept = arr.filter(b => !(b.category_id === catId && b.year === year && b.month === month));
       lsWrite(LS_KEYS.bud, kept);
       return arr.length - kept.length;
+    },
+    async getBudgetTemplate(year) {
+      const arr = lsRead(LS_KEYS.budTmpl);
+      return arr.find(t => t.year === year) || null;
+    },
+    async setBudgetTemplate(year, data) {
+      const arr = lsRead(LS_KEYS.budTmpl);
+      const idx = arr.findIndex(t => t.year === year);
+      const row = { year, data, updated_at: new Date().toISOString() };
+      if (idx >= 0) arr[idx] = row; else arr.push(row);
+      lsWrite(LS_KEYS.budTmpl, arr);
+      return row;
     },
     /** 批量新增记录（导入用）：一次读、一次写，比逐条 addExpense 快得多 */
     async bulkAddExpenses(rows) {
@@ -377,6 +389,15 @@ const Store = (() => {
       if (error) throw error;
       return true;
     },
+    async getBudgetTemplate(year) {
+      const { data, error } = await sb.from("budget_templates").select("year, data, updated_at").eq("year", year).maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    async setBudgetTemplate(year, data) {
+      const { error } = await sb.from("budget_templates").upsert({ year, data, updated_at: new Date().toISOString() }, { onConflict: "year" });
+      if (error) throw error;
+    },
     /** 批量新增记录（导入用）：分批 upsert，避免单次请求体过大 */
     async bulkAddExpenses(rows) {
       const BATCH = 500;
@@ -486,6 +507,7 @@ const Store = (() => {
           case "bulkAddExpenses": await supabaseAdapter.bulkAddExpenses(op.rows); break;
           case "setBudget": await supabaseAdapter.setBudget(op.catId, op.year, op.month, op.amountCents); break;
           case "deleteBudget": await supabaseAdapter.deleteBudget(op.catId, op.year, op.month); break;
+          case "setBudgetTemplate": await supabaseAdapter.setBudgetTemplate(op.year, op.data); break;
           case "addCategory": await supabaseAdapter.addCategory(op.name); break;
           case "updateCategory": await supabaseAdapter.updateCategory(op.id, op.patch); break;
           case "addItem": await supabaseAdapter.addItem(op.categoryId, op.name); break;
@@ -506,7 +528,7 @@ const Store = (() => {
 
   /** 从 Supabase 全量拉取，替换本地缓存 */
   async function pullRemoteToCache() {
-    const [cats, items, subs, exps, allBud] = await Promise.all([
+    const [cats, items, subs, exps, allBud, tmplRows] = await Promise.all([
       supabaseAdapter.getCategories(true),
       supabaseAdapter.getItems(true),
       supabaseAdapter.getSubitems(true),
@@ -520,12 +542,18 @@ const Store = (() => {
         ]);
         return [...cy, ...ly];
       })(),
+      (async () => {
+        const { data, error } = await sb.from("budget_templates").select("year, data, updated_at");
+        if (error) return [];
+        return data || [];
+      })(),
     ]);
     lsWrite(LS_KEYS.cat, cats);
     lsWrite(LS_KEYS.item, items);
     lsWrite(LS_KEYS.sub, subs);
     lsWrite(LS_KEYS.exp, exps);
     lsWrite(LS_KEYS.bud, allBud);
+    lsWrite(LS_KEYS.budTmpl, tmplRows);
     localStorage.setItem(LS_SYNCED, todayKey());
   }
 
@@ -681,6 +709,18 @@ const Store = (() => {
       addPending({ op: "deleteBudget", catId, year, month });
       if (mode === "supabase") retryPending().catch(() => {});
       return true;
+    },
+    async getBudgetTemplate(year) {
+      if (mode === "supabase") {
+        try { return await supabaseAdapter.getBudgetTemplate(year); }
+        catch (_) { return await local.getBudgetTemplate(year); }
+      }
+      return local.getBudgetTemplate(year);
+    },
+    async setBudgetTemplate(year, data) {
+      await local.setBudgetTemplate(year, data);
+      addPending({ op: "setBudgetTemplate", year, data });
+      if (mode === "supabase") retryPending().catch(() => {});
     },
     async bulkAddExpenses(rows) {
       const count = await local.bulkAddExpenses(rows);

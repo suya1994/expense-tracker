@@ -77,6 +77,15 @@ create table if not exists public.budgets (
 create unique index if not exists uq_budgets_cat_year_month
   on public.budgets (category_id, year, month);
 
+-- ---------- 预算模版（每年一个，存各大类分配快照）----------
+create table if not exists public.budget_templates (
+  id           uuid primary key default gen_random_uuid(),
+  year         integer not null unique,
+  data         jsonb   not null default '{}'::jsonb,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+
 -- ---------- 索引：支撑按日期/月份/年份/分类统计查询 ----------
 create index if not exists idx_expenses_date      on public.expenses (expense_date);
 create index if not exists idx_expenses_category  on public.expenses (category_id);
@@ -107,6 +116,7 @@ alter table public.category_items  enable row level security;
 alter table public.sub_items       enable row level security;
 alter table public.expenses        enable row level security;
 alter table public.budgets         enable row level security;
+alter table public.budget_templates enable row level security;
 
 drop policy if exists "personal_app_all" on public.categories;
 create policy "personal_app_all" on public.categories
@@ -128,6 +138,10 @@ drop policy if exists "personal_app_all" on public.budgets;
 create policy "personal_app_all" on public.budgets
   for all using (true) with check (true);
 
+drop policy if exists "personal_app_all" on public.budget_templates;
+create policy "personal_app_all" on public.budget_templates
+  for all using (true) with check (true);
+
 -- 旧库升级必须执行（新版 Supabase 通过 SQL 建表默认不给 anon 授权）：
 grant usage on schema public to anon;
 grant all on public.categories     to anon;
@@ -135,6 +149,7 @@ grant all on public.category_items to anon;
 grant all on public.sub_items      to anon;
 grant all on public.expenses       to anon;
 grant all on public.budgets        to anon;
+grant all on public.budget_templates to anon;
 
 -- ---------- 初始分类数据（可选，也可以在前端页面自己建）----------
 -- 若表为空则插入示例分类：

@@ -125,16 +125,14 @@
       for (let m = 1; m <= 12; m++) {
         rerenderMonthBlock(m);
       }
-      // 保存模版到 localStorage
-      const LS_BUD_TMPL = "et.budget_tmpl";
+      // 保存模版到线上数据库
       const tmplSave = {
-        year: state.year,
         cats: catVals.map(v => {
           const c = state.cats.find(x => x.id === v.catId);
           return { id: v.catId, name: c ? c.name : "", val: v.cents > 0 ? v.cents / 100 : "" };
         }),
       };
-      localStorage.setItem(LS_BUD_TMPL, JSON.stringify(tmplSave));
+      await Store.setBudgetTemplate(state.year, tmplSave);
       App.toast("模版已应用到全年 ✓");
     } catch (e) { App.fail(e, "应用失败"); }
   }
@@ -323,18 +321,16 @@
         return;
       }
 
-      // 模版：优先从 localStorage 读取
-      const LS_BUD_TMPL = "et.budget_tmpl";
-      let tmplData = null;
-      try { tmplData = JSON.parse(localStorage.getItem(LS_BUD_TMPL)); } catch (_) {}
-      const savedTmpl = tmplData && tmplData.year === year ? tmplData : null;
+      // 模版：从线上数据库读取
+      const savedTmpl = await Store.getBudgetTemplate(year);
+      const tmplData = savedTmpl ? savedTmpl.data : null;
 
       const tmplCats = cats.map(c => {
         const lastAvg = state.lastStats.byCat.get(c.id);
         const thisAvg = yearAvgByCat.get(c.id) || 0;
         let val = "";
-        if (savedTmpl && savedTmpl.cats) {
-          const sv = savedTmpl.cats.find(v => v.id === c.id);
+        if (tmplData && tmplData.cats) {
+          const sv = tmplData.cats.find(v => v.id === c.id);
           if (sv) val = sv.val;
         }
         return { cat: c, val, lastAvg: lastAvg ? lastAvg.avg : 0, thisAvg };
