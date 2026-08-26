@@ -412,6 +412,7 @@ body {
   display: flex; align-items: center; justify-content: space-between;
   padding-top: 10px; border-top: 1px dashed var(--border);
 }
+.tmpl-actions { display: flex; align-items: center; gap: 8px; }
 .mbud-block { border-bottom: 1px solid var(--border); }
 .mbud-block:last-child { border-bottom: none; }
 .mbud-head {
