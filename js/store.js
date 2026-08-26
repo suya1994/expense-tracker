@@ -333,16 +333,28 @@ const Store = (() => {
       return { moved };
     },
     async getExpenses(f = {}) {
-      let q = sb.from("expenses").select("*");
-      if (f.from) q = q.gte("expense_date", f.from);
-      if (f.to) q = q.lte("expense_date", f.to);
-      if (f.categoryId) q = q.eq("category_id", f.categoryId);
-      if (f.itemId) q = q.eq("item_id", f.itemId);
-      if (f.subitemId) q = q.eq("subitem_id", f.subitemId);
-      if (f.keyword) q = q.ilike("note", `%${f.keyword}%`);
-      const { data, error } = await q.order("expense_date", { ascending: false }).order("created_at", { ascending: false });
-      if (error) throw error;
-      return data || [];
+      const buildQ = () => {
+        let q = sb.from("expenses").select("*");
+        if (f.from) q = q.gte("expense_date", f.from);
+        if (f.to) q = q.lte("expense_date", f.to);
+        if (f.categoryId) q = q.eq("category_id", f.categoryId);
+        if (f.itemId) q = q.eq("item_id", f.itemId);
+        if (f.subitemId) q = q.eq("subitem_id", f.subitemId);
+        if (f.keyword) q = q.ilike("note", `%${f.keyword}%`);
+        return q;
+      };
+      let all = [];
+      let from = 0;
+      const size = 1000;
+      while (true) {
+        const { data, error } = await buildQ().range(from, from + size - 1).order("expense_date", { ascending: false }).order("created_at", { ascending: false });
+        if (error) throw error;
+        if (!data || !data.length) break;
+        all = all.concat(data);
+        if (data.length < size) break;
+        from += size;
+      }
+      return all;
     },
     async addExpense(e) {
       const { data, error } = await sb.from("expenses").insert({
