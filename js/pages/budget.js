@@ -41,8 +41,9 @@
       if (applyBtn) { applyTemplate(); return; }
       const applyMonthBtn = e.target.closest("#tmpl-apply-month");
       if (applyMonthBtn) {
+        const y = parseInt(page().querySelector("#tmpl-year").value, 10);
         const m = parseInt(page().querySelector("#tmpl-month").value, 10);
-        applyTemplateToMonth(m);
+        applyTemplateToMonth(y, m);
         return;
       }
       const catAdopt = e.target.closest("[data-cat-adopt]");
@@ -143,13 +144,13 @@
     } catch (e) { App.fail(e, "应用失败"); }
   }
 
-  async function applyTemplateToMonth(month) {
+  async function applyTemplateToMonth(year, month) {
     const { catVals, allocTotal } = getTemplateData();
     const catsWithAlloc = catVals.filter(v => v.cents > 0);
     if (!catsWithAlloc.length) { App.toast("请至少设置一个大类预算", "error"); return; }
 
     if (!await App.confirm(
-      `确认将此模版应用到 ${state.year} 年 ${month} 月？\n` +
+      `确认将此模版应用到 ${year} 年 ${month} 月？\n` +
       `该月预算合计 ${fmtYuan(allocTotal)}\n` +
       catsWithAlloc.map(v => {
         const c = state.cats.find(x => x.id === v.catId);
@@ -160,27 +161,18 @@
 
     try {
       for (const v of catsWithAlloc) {
-        await Store.setBudget(v.catId, state.year, month, v.cents);
-        syncLocal(v.catId, month, v.cents);
+        await Store.setBudget(v.catId, year, month, v.cents);
       }
+      // 清除不在模版里的大类
       for (const c of state.cats) {
         if (!catVals.some(v => v.catId === c.id)) {
-          const existing = state.budgets.find(b => b.category_id === c.id && b.year === state.year && b.month === month);
+          const existing = state.budgets.find(b => b.category_id === c.id && b.year === year && b.month === month);
           if (existing && existing.amount_cents > 0) {
-            await Store.deleteBudget(c.id, state.year, month);
-            state.budgets = state.budgets.filter(b => !(b.category_id === c.id && b.year === state.year && b.month === month));
+            await Store.deleteBudget(c.id, year, month);
           }
         }
       }
-      rerenderMonthBlock(month);
-      const tmplSave = {
-        cats: catVals.map(v => {
-          const c = state.cats.find(x => x.id === v.catId);
-          return { id: v.catId, name: c ? c.name : "", val: v.cents > 0 ? v.cents / 100 : "" };
-        }),
-      };
-      await Store.setBudgetTemplate(state.year, tmplSave);
-      App.toast(`模版已应用到 ${month} 月 ✓`);
+      App.toast(`模版已应用到 ${year} 年 ${month} 月 ✓`);
     } catch (e) { App.fail(e, "应用失败"); }
   }
 
@@ -406,6 +398,10 @@
           <div class="tmpl-footer">
             <span id="tmpl-total-display">${tmplAllocTotal > 0 ? `月合计 <b>${fmtYuan(tmplAllocTotal)}</b>` : ""}</span>
             <span class="tmpl-actions">
+              <select id="tmpl-year" class="sel-year" style="width:auto">
+                ${Array.from({ length: 7 }, (_, i) => nowY - 5 + i)
+                  .map(y => `<option value="${y}"${y === state.year ? " selected" : ""}>${y}年</option>`).join("")}
+              </select>
               <select id="tmpl-month" class="sel-year" style="width:auto">
                 ${Array.from({ length: 12 }, (_, i) => {
                   const m = i + 1;
