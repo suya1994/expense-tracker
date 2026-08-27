@@ -181,6 +181,14 @@
         }
       }
       rerenderMonthBlock(month);
+      // 保存模版到数据库
+      const tmplSave = {
+        cats: catVals.map(v => {
+          const c = state.cats.find(x => x.id === v.catId);
+          return { id: v.catId, name: c ? c.name : "", val: v.cents > 0 ? v.cents / 100 : "" };
+        }),
+      };
+      await Store.setBudgetTemplate(tmplSave);
       App.toast(`模版已应用到 ${year} 年 ${month} 月 ✓`);
     } catch (e) { App.fail(e, "应用失败"); }
   }
