@@ -162,6 +162,13 @@
     try {
       for (const v of catsWithAlloc) {
         await Store.setBudget(v.catId, year, month, v.cents);
+        // 同步本地 budgets 缓存
+        const existing = state.budgets.find(b => b.category_id === v.catId && b.year === year && b.month === month);
+        if (existing) {
+          existing.amount_cents = v.cents;
+        } else {
+          state.budgets.push({ category_id: v.catId, year, month, amount_cents: v.cents });
+        }
       }
       // 清除不在模版里的大类
       for (const c of state.cats) {
@@ -169,9 +176,11 @@
           const existing = state.budgets.find(b => b.category_id === c.id && b.year === year && b.month === month);
           if (existing && existing.amount_cents > 0) {
             await Store.deleteBudget(c.id, year, month);
+            state.budgets = state.budgets.filter(b => !(b.category_id === c.id && b.year === year && b.month === month));
           }
         }
       }
+      rerenderMonthBlock(month);
       App.toast(`模版已应用到 ${year} 年 ${month} 月 ✓`);
     } catch (e) { App.fail(e, "应用失败"); }
   }
@@ -409,6 +418,8 @@
                   return `<option value="${m}"${m === nowM ? " selected" : ""}>${m}月</option>`;
                 }).join("")}
               </select>
+            </span>
+            <span class="tmpl-actions" style="margin-top:8px">
               <button class="btn btn-ghost" id="tmpl-apply-month">应用到指定月</button>
               <button class="btn btn-primary" id="tmpl-apply">应用到全年</button>
             </span>
