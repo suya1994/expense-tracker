@@ -435,7 +435,7 @@ body {
 .tmpl-row input:focus { outline: 2px solid var(--accent-weak); border-color: var(--accent); }
 .tmpl-cats { margin: 10px 0; }
 .tmpl-footer {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; flex-direction: column; gap: 8px;
   padding-top: 10px; border-top: 1px dashed var(--border);
 }
 .tmpl-actions { display: flex; align-items: center; gap: 8px; }

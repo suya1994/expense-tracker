@@ -139,7 +139,7 @@
           return { id: v.catId, name: c ? c.name : "", val: v.cents > 0 ? v.cents / 100 : "" };
         }),
       };
-      await Store.setBudgetTemplate(state.year, tmplSave);
+      await Store.setBudgetTemplate(tmplSave);
       App.toast("模版已应用到全年 ✓");
     } catch (e) { App.fail(e, "应用失败"); }
   }
@@ -371,7 +371,7 @@
       }
 
       // 模版：从线上数据库读取
-      const savedTmpl = await Store.getBudgetTemplate(year);
+      const savedTmpl = await Store.getBudgetTemplate();
       const tmplData = savedTmpl ? savedTmpl.data : null;
 
       const tmplCats = cats.map(c => {

@@ -135,13 +135,13 @@ const Store = (() => {
       if (error) throw error;
       return true;
     },
-    async getBudgetTemplate(year) {
-      const { data, error } = await sb.from("budget_templates").select("year, data, updated_at").eq("year", year).maybeSingle();
+    async getBudgetTemplate() {
+      const { data, error } = await sb.from("budget_templates").select("data, updated_at").eq("year", 0).maybeSingle();
       if (error) throw error;
       return data;
     },
-    async setBudgetTemplate(year, data) {
-      const { error } = await sb.from("budget_templates").upsert({ year, data, updated_at: new Date().toISOString() }, { onConflict: "year" });
+    async setBudgetTemplate(data) {
+      const { error } = await sb.from("budget_templates").upsert({ year: 0, data, updated_at: new Date().toISOString() }, { onConflict: "year" });
       if (error) throw error;
     },
     async bulkAddExpenses(rows) {
@@ -256,7 +256,7 @@ const Store = (() => {
     async getSubitems(includeInactive) { return db.getSubitems(includeInactive); },
     async getExpenses(f) { return db.getExpenses(f); },
     async getBudgets(year) { return db.getBudgets(year); },
-    async getBudgetTemplate(year) { return db.getBudgetTemplate(year); },
+    async getBudgetTemplate() { return db.getBudgetTemplate(); },
 
     async addCategory(name) { return db.addCategory(name); },
     async updateCategory(id, patch) { return db.updateCategory(id, patch); },
@@ -271,7 +271,7 @@ const Store = (() => {
     async deleteExpensesByRange(from, to) { return db.deleteExpensesByRange(from, to); },
     async setBudget(catId, year, month, amountCents) { return db.setBudget(catId, year, month, amountCents); },
     async deleteBudget(catId, year, month) { return db.deleteBudget(catId, year, month); },
-    async setBudgetTemplate(year, data) { return db.setBudgetTemplate(year, data); },
+    async setBudgetTemplate(data) { return db.setBudgetTemplate(data); },
     async bulkAddExpenses(rows) { return db.bulkAddExpenses(rows); },
     async deleteCategoryWithTransfer(catId, targetCatId) { return db.deleteCategoryWithTransfer(catId, targetCatId); },
     async deleteItemWithTransfer(itemId, targetItemId) { return db.deleteItemWithTransfer(itemId, targetItemId); },
