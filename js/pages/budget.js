@@ -205,13 +205,17 @@
       .reduce((s, b) => s + b.amount_cents, 0);
   }
 
-  /** 重新渲染单个月份区块（数据已更新后调用） */
+/** 重新渲染单个月份区块（数据已更新后调用） */
   function rerenderMonthBlock(m) {
     const block = getMonthBlock(m);
     if (!block) return;
     const wasOpen = block.classList.contains("open");
 
-    const budget = monthBudgetCents(m);
+    // 只统计当前查看年份的预算
+    const budgetsThisYear = state.budgets.filter(b => b.year === state.year);
+    const budget = budgetsThisYear
+      .filter(b => b.month === m && b.amount_cents > 0)
+      .reduce((s, b) => s + b.amount_cents, 0);
     const budgetSet = budget > 0;
     const monthIdx = m - 1;
     const spent = (state.yearRecords || [])
@@ -219,7 +223,7 @@
       .reduce((s, r) => s + r.amount_cents, 0);
     const nowM2 = new Date().getMonth() + 1;
     const isCurrent = m === nowM2 && state.year === new Date().getFullYear();
-    const g = Budget.grid(state.budgets);
+    const g = Budget.grid(budgetsThisYear);
 
     const catAlloc = state.cats.map(c => {
       const arr = g.get(c.id);
@@ -230,8 +234,8 @@
     });
     const allocTotal = catAlloc.reduce((s, a) => s + (a.alloc || 0), 0);
 
-    block.outerHTML = `
-    <div class="mbud-block${wasOpen ? " open" : ""}" data-month="${m}">
+    // 用 innerHTML 替换内容，保持事件绑定
+    block.innerHTML = `
       <div class="mbud-head">
         <span class="cat-chevron">▸</span>
         <span class="mbud-month"${isCurrent ? ' style="font-weight:700"' : ""}>${m}月</span>
@@ -257,10 +261,8 @@
             </div>
           `).join("")}
         </div>
-      </div>
-    </div>`;
-
-    updateAnnualTotal();
+      </div>`;
+    block.classList.toggle("open", wasOpen);
   }
 
   function updateAnnualTotal() {
