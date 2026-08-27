@@ -162,6 +162,7 @@
     try {
       console.log('[applyTemplateToMonth] start', { year, month, stateYear: state.year, catsWithAlloc });
       for (const v of catsWithAlloc) {
+        console.log('[applyTemplateToMonth] writing', { catId: v.catId, catName: state.cats.find(c => c.id === v.catId)?.name, cents: v.cents });
         await Store.setBudget(v.catId, year, month, v.cents);
         // 同步本地 budgets 缓存
         const existing = state.budgets.find(b => b.category_id === v.catId && b.year === year && b.month === month);
@@ -176,12 +177,13 @@
         if (!catVals.some(v => v.catId === c.id)) {
           const existing = state.budgets.find(b => b.category_id === c.id && b.year === year && b.month === month);
           if (existing && existing.amount_cents > 0) {
+            console.log('[applyTemplateToMonth] deleting', { catId: c.id, catName: c.name });
             await Store.deleteBudget(c.id, year, month);
             state.budgets = state.budgets.filter(b => !(b.category_id === c.id && b.year === year && b.month === month));
           }
         }
       }
-      console.log('[applyTemplateToMonth] state.budgets after', state.budgets.filter(b => b.year === year && b.month === month));
+      console.log('[applyTemplateToMonth] state.budgets after', state.budgets.filter(b => b.year === year && b.month === month).map(b => ({ catId: b.category_id, catName: state.cats.find(c => c.id === b.category_id)?.name, cents: b.amount_cents })));
       rerenderMonthBlock(month);
       // 保存模版到数据库
       const tmplSave = {
