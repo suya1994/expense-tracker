@@ -146,8 +146,10 @@
 
   async function applyTemplateToMonth(year, month) {
     const { catVals, allocTotal } = getTemplateData();
+    // 空输入视为 0（删除预算）
     const catsWithAlloc = catVals.filter(v => v.cents > 0);
-    if (!catsWithAlloc.length) { App.toast("请至少设置一个大类预算", "error"); return; }
+    const catsToClear = catVals.filter(v => v.cents <= 0); // 空或 0 的，需清除
+    if (!catsWithAlloc.length && !catsToClear.length) { App.toast("请至少设置一个大类预算", "error"); return; }
 
     if (!await App.confirm(
       `确认将此模版应用到 ${year} 年 ${month} 月？\n` +
@@ -160,24 +162,30 @@
     )) return;
 
     try {
-      console.log('[applyTemplateToMonth] start', { year, month, stateYear: state.year, catsWithAlloc });
+      console.log('[applyTemplateToMonth] start', { year, month, stateYear: state.year, catsWithAlloc, catsToClear });
+      // 写入有分配的
       for (const v of catsWithAlloc) {
         console.log('[applyTemplateToMonth] writing', { catId: v.catId, catName: state.cats.find(c => c.id === v.catId)?.name, cents: v.cents });
         await Store.setBudget(v.catId, year, month, v.cents);
-        // 同步本地 budgets 缓存
         const existing = state.budgets.find(b => b.category_id === v.catId && b.year === year && b.month === month);
-        if (existing) {
-          existing.amount_cents = v.cents;
-        } else {
-          state.budgets.push({ category_id: v.catId, year, month, amount_cents: v.cents });
+        if (existing) existing.amount_cents = v.cents;
+        else state.budgets.push({ category_id: v.catId, year, month, amount_cents: v.cents });
+      }
+      // 显式设为 0 的：删除预算
+      for (const v of catsToClear) {
+        const existing = state.budgets.find(b => b.category_id === v.catId && b.year === year && b.month === month);
+        if (existing && existing.amount_cents > 0) {
+          console.log('[applyTemplateToMonth] clearing', { catId: v.catId, catName: state.cats.find(c => c.id === v.catId)?.name });
+          await Store.deleteBudget(v.catId, year, month);
+          state.budgets = state.budgets.filter(b => !(b.category_id === v.catId && b.year === year && b.month === month));
         }
       }
-      // 清除不在模版里的大类
+      // 清除不在模版里的大类（兼容旧逻辑）
       for (const c of state.cats) {
         if (!catVals.some(v => v.catId === c.id)) {
           const existing = state.budgets.find(b => b.category_id === c.id && b.year === year && b.month === month);
           if (existing && existing.amount_cents > 0) {
-            console.log('[applyTemplateToMonth] deleting', { catId: c.id, catName: c.name });
+            console.log('[applyTemplateToMonth] deleting (not in template)', { catId: c.id, catName: c.name });
             await Store.deleteBudget(c.id, year, month);
             state.budgets = state.budgets.filter(b => !(b.category_id === c.id && b.year === year && b.month === month));
           }
