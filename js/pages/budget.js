@@ -160,6 +160,7 @@
     )) return;
 
     try {
+      console.log('[applyTemplateToMonth] start', { year, month, stateYear: state.year, catsWithAlloc });
       for (const v of catsWithAlloc) {
         await Store.setBudget(v.catId, year, month, v.cents);
         // 同步本地 budgets 缓存
@@ -180,6 +181,7 @@
           }
         }
       }
+      console.log('[applyTemplateToMonth] state.budgets after', state.budgets.filter(b => b.year === year && b.month === month));
       rerenderMonthBlock(month);
       // 保存模版到数据库
       const tmplSave = {
@@ -207,12 +209,17 @@
 
 /** 重新渲染单个月份区块（数据已更新后调用） */
   function rerenderMonthBlock(m) {
+    console.log('[rerenderMonthBlock] called', { m, stateYear: state.year });
     const block = getMonthBlock(m);
-    if (!block) return;
+    if (!block) {
+      console.log('[rerenderMonthBlock] block not found for month', m);
+      return;
+    }
     const wasOpen = block.classList.contains("open");
 
     // 只统计当前查看年份的预算
     const budgetsThisYear = state.budgets.filter(b => b.year === state.year);
+    console.log('[rerenderMonthBlock] budgetsThisYear', budgetsThisYear.filter(b => b.month === m));
     const budget = budgetsThisYear
       .filter(b => b.month === m && b.amount_cents > 0)
       .reduce((s, b) => s + b.amount_cents, 0);
@@ -263,6 +270,7 @@
         </div>
       </div>`;
     block.classList.toggle("open", wasOpen);
+    console.log('[rerenderMonthBlock] done', { m, budget, budgetSet });
   }
 
   function updateAnnualTotal() {
