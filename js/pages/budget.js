@@ -333,6 +333,7 @@
       }
 
       const monthSpent = monthlyTotalsOf(yearRecords);
+      const nowY = new Date().getFullYear();
       const nowM = new Date().getMonth() + 1;
 
       // 今年各月均（不含当月）：用于模版参考
